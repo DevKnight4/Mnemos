@@ -56,9 +56,9 @@ class QAPipeline:
         query_str = "Summarize the core concepts." if topic == "all" else f"Information about {topic}"
         
         if "all" not in document and len(document) > 0:
-            retrieved_docs = self.vectorstore.similarity_search(query_str, k=10, filter={"source": {"$in": document}})
+            retrieved_docs = self.vectorstore.similarity_search(query_str, k=4, filter={"source": {"$in": document}})
         else:
-            retrieved_docs = self.vectorstore.similarity_search(query_str, k=10)
+            retrieved_docs = self.vectorstore.similarity_search(query_str, k=4)
             
         context = "\n\n".join([doc.page_content for doc in retrieved_docs])
         
