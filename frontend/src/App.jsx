@@ -6,7 +6,7 @@ import {
   FileText, Sparkles, Brain, ChevronDown, Check, ArrowLeft, ArrowRight, Lightbulb 
 } from 'lucide-react'
 
-const API_URL = 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
