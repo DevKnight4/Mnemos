@@ -111,30 +111,33 @@ import json
 async def generate_summary(topic: str = "all", document: list[str] = Query(default=["all"])):
     if not qa_pipeline:
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
-    content = qa_pipeline.generate_revision_material(topic, SUMMARY_PROMPT, document)
-    return {"summary": content}
+    try:
+        content = qa_pipeline.generate_revision_material(topic, SUMMARY_PROMPT, document)
+        return {"summary": content}
+    except Exception as e:
+        return {"summary": f"API Error: {str(e)}"}
 
 @app.post("/generate-flashcards")
 async def generate_flashcards(topic: str = "all", document: list[str] = Query(default=["all"])):
     if not qa_pipeline:
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
-    content = qa_pipeline.generate_revision_material(topic, FLASHCARD_PROMPT, document)
     try:
+        content = qa_pipeline.generate_revision_material(topic, FLASHCARD_PROMPT, document)
         parsed_content = json.loads(content.replace('```json', '').replace('```', '').strip())
         return {"flashcards": parsed_content}
     except Exception as e:
-        return {"flashcards": [{"q": "Parse Error", "a": content}]}
+        return {"flashcards": [{"q": "API Error", "a": str(e)}]}
 
 @app.post("/generate-quiz")
 async def generate_quiz(topic: str = "all", document: list[str] = Query(default=["all"])):
     if not qa_pipeline:
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
-    content = qa_pipeline.generate_revision_material(topic, QUIZ_PROMPT, document)
     try:
+        content = qa_pipeline.generate_revision_material(topic, QUIZ_PROMPT, document)
         parsed_content = json.loads(content.replace('```json', '').replace('```', '').strip())
         return {"quiz": parsed_content}
     except Exception as e:
-        return {"quiz": [{"q": "Parse Error", "options": ["A"], "answer": content}]}
+        return {"quiz": [{"q": "API Error", "options": ["A"], "answer": str(e)}]}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
