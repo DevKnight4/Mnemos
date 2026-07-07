@@ -1,0 +1,29 @@
+# Environment variables
+.env
+.env.*
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+temp_uploads/
+
+# Chroma / Vector DB
+vectorstore/
+vectorstore_db/
+chroma/
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+.npm/
+
+# IDE / System
+.vscode/
+.idea/
+.DS_Store
+*.log
