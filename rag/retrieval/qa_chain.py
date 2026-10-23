@@ -8,8 +8,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 REFUSAL_MESSAGE = "I cannot answer this based on the provided documents."
 
 # Maximum vector distance for a chunk to count as relevant (Chroma returns a distance: LOWER = MORE similar).
-# PROVISIONAL value: calibrate with scripts/score_probe.py on real documents before relying on it.
-MAX_DISTANCE = 1.0
+# Calibrated with scripts/score_probe.py on a 41-page OS notes PDF (87 chunks, 1000/200 chunking, Gemini embeddings):
+#   answerable questions scored 0.32-0.57 (one short query, "round robin", scored 0.84)
+#   off-topic questions scored 0.63-1.02
+# 0.6 sits in the gap between the two groups. Re-calibrate if the embedding model or chunk size changes.
+MAX_DISTANCE = 0.6
 
 def format_docs(docs) -> str:
     """Join retrieved chunks into one context string for the prompt."""

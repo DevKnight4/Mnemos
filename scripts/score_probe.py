@@ -16,6 +16,7 @@ import os
 import sys
 import shutil
 import tempfile
+import time
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -30,14 +31,30 @@ from rag.embeddings.embedder import Embedder
 from rag.vectorstore.chroma_store import ChromaVectorStore
 
 
+def with_retry(fn, *args, **kwargs):
+    """Call fn, waiting and retrying when the Gemini free tier rate limit (429) is hit."""
+    for attempt in range(8):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                print(f"  rate limit hit, waiting 30s (attempt {attempt + 1}/8)...", flush=True)
+                time.sleep(30)
+            else:
+                raise
+    raise RuntimeError("Still rate limited after 8 retries")
+
+
 def main(doc_path: str, questions_path: str):
     tmp_dir = tempfile.mkdtemp(prefix="mnemos_probe_")
     try:
         store = ChromaVectorStore(embedder=Embedder(), persist_directory=tmp_dir)
         docs = DocumentLoader(temp_dir=tmp_dir).load_document(doc_path, "application/pdf" if doc_path.endswith(".pdf") else "text/plain")
         chunks = TextChunker().split_documents(docs)
-        store.add_documents(chunks)
-        print(f"Indexed {len(chunks)} chunks from {os.path.basename(doc_path)}\n")
+        # Index in small batches so a rate limit only retries one batch, not the whole document
+        for i in range(0, len(chunks), 20):
+            with_retry(store.add_documents, chunks[i:i + 20])
+        print(f"Indexed {len(chunks)} chunks from {os.path.basename(doc_path)}\n", flush=True)
 
         rows = []
         with open(questions_path, encoding="utf-8") as f:
@@ -46,7 +63,7 @@ def main(doc_path: str, questions_path: str):
                 if len(line) < 3 or line[0] not in "+-":
                     continue
                 label, question = line[0], line[1:].strip()
-                results = store.vectorstore.similarity_search_with_score(question, k=4)
+                results = with_retry(store.vectorstore.similarity_search_with_score, question, k=4)
                 best = min(score for _, score in results)
                 rows.append((label, best, question))
 
