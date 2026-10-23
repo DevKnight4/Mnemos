@@ -125,7 +125,7 @@ async def query_knowledge_base(query: str, document: list[str] = Query(default=[
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
     
     try:
-        response = qa_pipeline.query(query, document)
+        response = await qa_pipeline.query(query, document)
         return response
     except HTTPException:
         raise
@@ -139,7 +139,7 @@ async def generate_summary(topic: str = "all", document: list[str] = Query(defau
     if not qa_pipeline:
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
     try:
-        content = qa_pipeline.generate_revision_material(topic, SUMMARY_PROMPT, document)
+        content = await qa_pipeline.generate_revision_material(topic, SUMMARY_PROMPT, document)
         return {"summary": content}
     except HTTPException:
         raise
@@ -151,7 +151,7 @@ async def generate_flashcards(topic: str = "all", document: list[str] = Query(de
     if not qa_pipeline:
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
     try:
-        content = qa_pipeline.generate_revision_material(topic, FLASHCARD_PROMPT, document)
+        content = await qa_pipeline.generate_revision_material(topic, FLASHCARD_PROMPT, document)
         return {"flashcards": parse_llm_json(content)}
     except HTTPException:
         raise
@@ -163,7 +163,7 @@ async def generate_quiz(topic: str = "all", document: list[str] = Query(default=
     if not qa_pipeline:
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
     try:
-        content = qa_pipeline.generate_revision_material(topic, QUIZ_PROMPT, document)
+        content = await qa_pipeline.generate_revision_material(topic, QUIZ_PROMPT, document)
         return {"quiz": parse_llm_json(content)}
     except HTTPException:
         raise
