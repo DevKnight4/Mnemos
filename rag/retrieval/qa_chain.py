@@ -1,6 +1,12 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+REFUSAL_MESSAGE = "I cannot answer this based on the provided documents."
+
+# Maximum vector distance for a chunk to count as relevant (Chroma returns a distance: LOWER = MORE similar).
+# PROVISIONAL value: calibrate with scripts/score_probe.py on real documents before relying on it.
+MAX_DISTANCE = 1.0
+
 class QAPipeline:
     def __init__(self, vectorstore, llm_model="gemini-2.5-flash"):
         # Uses the Gemini API for generative tasks
@@ -23,12 +29,24 @@ class QAPipeline:
             ("human", "{input}"),
         ])
         
-    def query(self, user_query: str, document: list[str] = ["all"]):
-        # 1. Retrieve documents
+    def _search_with_scores(self, query: str, document: list[str], k: int = 4):
+        """Vector search returning (Document, distance) pairs. Lower distance = more similar."""
         if "all" not in document and len(document) > 0:
-            retrieved_docs = self.vectorstore.similarity_search(user_query, k=4, filter={"source": {"$in": document}})
-        else:
-            retrieved_docs = self.vectorstore.similarity_search(user_query, k=4)
+            return self.vectorstore.similarity_search_with_score(query, k=k, filter={"source": {"$in": document}})
+        return self.vectorstore.similarity_search_with_score(query, k=k)
+
+    def query(self, user_query: str, document: list[str] = ["all"]):
+        # 1. Retrieve documents (with distance scores) and drop chunks that are not relevant enough
+        scored_docs = self._search_with_scores(user_query, document)
+        retrieved_docs = [doc for doc, score in scored_docs if score <= MAX_DISTANCE]
+
+        # Guard: if nothing relevant was retrieved, refuse without calling the LLM
+        if not retrieved_docs:
+            return {
+                "answer": REFUSAL_MESSAGE,
+                "citations": [],
+                "context_docs": []
+            }
             
         context = "\n\n".join([doc.page_content for doc in retrieved_docs])
         
@@ -38,12 +56,15 @@ class QAPipeline:
         # 3. Get LLM response
         response = self.llm.invoke(messages)
         
-        # 4. Extract citations
+        # 4. Extract citations (source file + page number where available, de-duplicated)
         citations = []
         for doc in retrieved_docs:
-            source = doc.metadata.get("source", "Unknown Source")
-            if source not in citations:
-                citations.append(source)
+            citation = {"source": doc.metadata.get("source", "Unknown Source")}
+            page = doc.metadata.get("page")
+            if isinstance(page, int):
+                citation["page"] = page + 1  # PyPDF pages are 0-indexed; show 1-indexed to users
+            if citation not in citations:
+                citations.append(citation)
                 
         return {
             "answer": response.content,

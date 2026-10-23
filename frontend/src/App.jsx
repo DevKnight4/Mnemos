@@ -109,6 +109,9 @@ function App() {
     }
   }
 
+  // Citations arrive as { source, page? } - page is only present for PDFs
+  const formatCite = (cite) => (cite.page ? `${cite.source} (p. ${cite.page})` : cite.source)
+
   const toggleDoc = (doc) => {
     if (doc === 'all') {
       setSelectedDocs(['all'])
@@ -279,7 +282,7 @@ function App() {
                              {msg.citations?.length > 0 && (
                                <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-2">
                                  {msg.citations.map((cite, i) => (
-                                   <span key={i} className="text-[11px] bg-hover text-text-muted px-3 py-1.5 rounded-full font-medium border border-border">Source: {cite}</span>
+                                   <span key={i} className="text-[11px] bg-hover text-text-muted px-3 py-1.5 rounded-full font-medium border border-border">Source: {formatCite(cite)}</span>
                                  ))}
                                </div>
                              )}
@@ -348,7 +351,7 @@ function App() {
                             key={i} className="p-4 bg-surface rounded-xl shadow-sm border border-border hover:-translate-y-1 transition-transform relative overflow-hidden"
                           >
                             <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary to-secondary"></div>
-                            <p className="text-sm text-text font-medium leading-relaxed">{cite}</p>
+                            <p className="text-sm text-text font-medium leading-relaxed">{formatCite(cite)}</p>
                             <p className="text-[10px] text-text-muted mt-2 font-semibold uppercase tracking-widest flex items-center gap-1">
                               <Check className="w-3 h-3 text-success" /> Source Verified
                             </p>
