@@ -86,7 +86,8 @@ function App() {
     setActiveCitations([])
 
     try {
-      const res = await fetch(`${API_URL}/query?query=${encodeURIComponent(userMsg)}`, {
+      const docsQuery = selectedDocs.map(d => `document=${encodeURIComponent(d)}`).join('&')
+      const res = await fetch(`${API_URL}/query?query=${encodeURIComponent(userMsg)}&${docsQuery}`, {
         method: 'POST',
       })
       const data = await res.json()
@@ -127,7 +128,11 @@ function App() {
       const docsQuery = selectedDocs.map(d => `document=${encodeURIComponent(d)}`).join('&')
       const res = await fetch(`${API_URL}/${endpoint}?topic=all&${docsQuery}`, { method: 'POST' })
       const data = await res.json()
-      setRevisionData({ type: endpoint, content: data })
+      if (res.ok) {
+        setRevisionData({ type: endpoint, content: data })
+      } else {
+        setRevisionData({ type: 'error', content: data.detail || 'Failed to generate' })
+      }
     } catch (error) {
       setRevisionData({ type: 'error', content: 'Failed to generate' })
     } finally {
@@ -538,7 +543,7 @@ function App() {
                   {revisionData.type === 'error' && (
                     <div className="text-center py-16 bg-red-50 rounded-2xl border border-red-100">
                        <p className="text-red-600 font-semibold text-lg">There was an error generating the content.</p>
-                       <p className="text-red-400 mt-2 text-sm">Please check the backend logs or try again.</p>
+                       <p className="text-red-400 mt-2 text-sm">{typeof revisionData.content === 'string' ? revisionData.content : 'Please check the backend logs or try again.'}</p>
                     </div>
                   )}
 

@@ -1,4 +1,5 @@
 import os
+import json
 import tempfile
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +45,20 @@ async def startup_event():
     qa_pipeline = QAPipeline(vectorstore=vector_store.vectorstore)
     print("RAG Pipeline Initialized.")
 
+def raise_provider_error(e: Exception):
+    """Map failures from the Gemini API (LLM / embeddings) to proper HTTP status codes."""
+    msg = str(e)
+    if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
+        raise HTTPException(status_code=429, detail="Gemini API rate limit or quota reached. Please try again shortly.")
+    raise HTTPException(status_code=502, detail=f"Upstream AI service error: {msg}")
+
+def parse_llm_json(content: str):
+    """Parse JSON returned by the LLM (strips markdown fences). Raises 502 if the format is invalid."""
+    try:
+        return json.loads(content.replace('```json', '').replace('```', '').strip())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="The AI returned an invalid format. Please try again.")
+
 @app.get("/")
 def read_root():
     return {"message": "Mnemos Backend API is running"}
@@ -53,9 +68,14 @@ async def upload_document(file: UploadFile = File(...)):
     if not document_loader:
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
     
+    # Strip any directory components from the client-supplied filename (prevents path traversal like "../../x")
+    safe_name = os.path.basename((file.filename or "").replace("\\", "/"))
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
     # Save uploaded file to temp directory
+    temp_path = os.path.join(document_loader.temp_dir, safe_name)
     try:
-        temp_path = os.path.join(document_loader.temp_dir, file.filename)
         with open(temp_path, "wb") as f:
             f.write(await file.read())
             
@@ -68,12 +88,18 @@ async def upload_document(file: UploadFile = File(...)):
         # 3. Add to vector store
         vector_store.add_documents(chunks)
         
-        # Optional: clean up temp file
-        os.remove(temp_path)
-        
-        return {"status": "success", "filename": file.filename, "chunks_indexed": len(chunks)}
+        return {"status": "success", "filename": safe_name, "chunks_indexed": len(chunks)}
+    except ValueError as e:
+        # Unsupported file type
+        raise HTTPException(status_code=415, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_provider_error(e)
+    finally:
+        # Always clean up the temp file, even if indexing failed
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 @app.get("/documents")
 async def get_documents():
@@ -101,11 +127,12 @@ async def query_knowledge_base(query: str, document: list[str] = Query(default=[
     try:
         response = qa_pipeline.query(query, document)
         return response
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_provider_error(e)
 
 from rag.prompts.templates import SUMMARY_PROMPT, FLASHCARD_PROMPT, QUIZ_PROMPT
-import json
 
 @app.post("/generate-summary")
 async def generate_summary(topic: str = "all", document: list[str] = Query(default=["all"])):
@@ -114,8 +141,10 @@ async def generate_summary(topic: str = "all", document: list[str] = Query(defau
     try:
         content = qa_pipeline.generate_revision_material(topic, SUMMARY_PROMPT, document)
         return {"summary": content}
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"summary": f"API Error: {str(e)}"}
+        raise_provider_error(e)
 
 @app.post("/generate-flashcards")
 async def generate_flashcards(topic: str = "all", document: list[str] = Query(default=["all"])):
@@ -123,10 +152,11 @@ async def generate_flashcards(topic: str = "all", document: list[str] = Query(de
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
     try:
         content = qa_pipeline.generate_revision_material(topic, FLASHCARD_PROMPT, document)
-        parsed_content = json.loads(content.replace('```json', '').replace('```', '').strip())
-        return {"flashcards": parsed_content}
+        return {"flashcards": parse_llm_json(content)}
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"flashcards": [{"q": "API Error", "a": str(e)}]}
+        raise_provider_error(e)
 
 @app.post("/generate-quiz")
 async def generate_quiz(topic: str = "all", document: list[str] = Query(default=["all"])):
@@ -134,10 +164,11 @@ async def generate_quiz(topic: str = "all", document: list[str] = Query(default=
         raise HTTPException(status_code=500, detail="RAG pipeline not initialized")
     try:
         content = qa_pipeline.generate_revision_material(topic, QUIZ_PROMPT, document)
-        parsed_content = json.loads(content.replace('```json', '').replace('```', '').strip())
-        return {"quiz": parsed_content}
+        return {"quiz": parse_llm_json(content)}
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"quiz": [{"q": "API Error", "options": ["A"], "answer": str(e)}]}
+        raise_provider_error(e)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
